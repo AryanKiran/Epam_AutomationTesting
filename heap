@@ -1,1 +1,99 @@
 
+package com.example.demo.service;
+ 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+ 
+import java.io.*;
+import java.util.*;
+ 
+@Service
+public class ComparisonService {
+ 
+    public ByteArrayOutputStream compareFiles(MultipartFile excelFile, MultipartFile jsonFile) throws IOException {
+        // Parse JSON into list of maps
+        ObjectMapper mapper = new ObjectMapper();
+        List<Map<String, String>> jsonList = mapper.readValue(jsonFile.getInputStream(), List.class);
+ 
+        // Load Excel workbook
+        Workbook workbook = new XSSFWorkbook(excelFile.getInputStream());
+        Sheet sheet = workbook.getSheetAt(0);
+ 
+        // Get headers
+        Row headerRow = sheet.getRow(0);
+        int excelColIndex = headerRow.getLastCellNum();
+        headerRow.createCell(excelColIndex).setCellValue("Data Present in Json");
+ 
+        int resultColIndex = headerRow.getLastCellNum();
+        headerRow.createCell(resultColIndex).setCellValue("Comparison Result");
+ 
+        int totalExcelColIndex=headerRow.getLastCellNum();
+        headerRow.createCell(totalExcelColIndex).setCellValue("Total Excel Data");
+ 
+        int totalJsonColIndex=headerRow.getLastCellNum();
+        headerRow.createCell(totalJsonColIndex).setCellValue("Total Json Data");
+ 
+        int matchedColIndex=headerRow.getLastCellNum();
+        headerRow.createCell(matchedColIndex).setCellValue("Matched Data");
+ 
+        int notMatchedColIndex=headerRow.getLastCellNum();
+        headerRow.createCell(notMatchedColIndex).setCellValue("Not Matched Data");
+ 
+        Row firstRow = sheet.getRow(1);
+        int matched=0;
+        int notMatched=0;
+
+ 
+        List<String> headers = new ArrayList<>();
+        for (Cell cell : headerRow) {
+            headers.add(cell.getStringCellValue().trim());
+        }
+ 
+        // Create red highlight style
+        CellStyle redStyle = workbook.createCellStyle();
+        redStyle.setFillForegroundColor(IndexedColors.RED.getIndex());
+        redStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+ 
+        // Compare each row
+        for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+            Row row = sheet.getRow(i);
+            if (row == null || i - 1 >= jsonList.size()) continue;
+ 
+            Map<String, String> jsonRow = jsonList.get(i - 1);
+            boolean match = true;
+            boolean data=false;
+            for (int j = 0; j <headers.size(); j++) {
+                Cell cell = row.getCell(j);
+                String excelVal = cell != null ? cell.toString().trim().toLowerCase() : "";
+                String jsonVal = jsonRow.getOrDefault(headers.get(j), "").trim().toLowerCase();
+                if (!excelVal.equals(jsonVal)) {
+                    if (cell != null) cell.setCellStyle(redStyle);
+                    match = false;
+                }
+            }
+            String result="Not Present";
+             if(match){
+                matched++;
+                result="Correct";
+             }else{
+                result="Wrong";
+                notMatched++;
+             }
+            row.createCell(resultColIndex).setCellValue(result);
+        }
+        System.out.println(headers.size());
+        firstRow.createCell(totalExcelColIndex).setCellValue(sheet.getLastRowNum());
+        firstRow.createCell(totalJsonColIndex).setCellValue(jsonList.size());
+        firstRow.createCell(matchedColIndex).setCellValue(matched);
+        firstRow.createCell(notMatchedColIndex).setCellValue(notMatched);
+        // Write to output stream
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        workbook.write(outputStream);
+        workbook.close();
+ 
+        return outputStream;
+    }
+}
